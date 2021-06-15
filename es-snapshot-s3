@@ -1,27 +1,231 @@
-Install s3 plugin on all nodes and restart the es service :
-
-/usr/share/elasticsearch/bin/elasticsearch-plugin install repository-s3
+## ES-Curator with AWS S3 POC
 
 
-To register s3 as snapshot registry :
+#### Maintainer : Deepak Gupta
 
-#!/bin/bash
+
+Elasticsearch Curator helps you curate, or manage, your Elasticsearch indices and snapshots by: Obtaining the full list of indices (or snapshots) from the cluster, as the actionable list. Iterate through a list of user-defined filters to progressively remove indices (or snapshots) from this actionable list as needed.
+
+
+
+Get Started :
+
+
+Install Curator on your master Node or you can keep a different server or a pod as well.
+           apt/yum install python3-pip
+
+           pip install elasticsearch-curator
+
+
+
+      2. Curator Consist of 2 configs files importantly, one is your Curator Config and another is your actions config file where you define your customs actions need to be performed by curator. 
+
+             to run curator : sudo curator --config <path/of/curator/config> <path/of/actions.yml>
+
+
+
+Setup S3 Repository :     
+To Setup S3 as snapshot repository, need to install S3 plugin. The command used :
+
+      /usr/share/elasticsearch/bin/elasticsearch-plugin install repository-s3
+
+Note : This plugin need to be installed in every node of your cluster, and then elasticsearch service need to be restarted on every node.
+
+
+
+Now, we have to setup the snapshot repository, for that create a S3 bucket in your AWS account, and proceed with following :
+
+
+
+Come to your master Node of ES , and register your S3 bucket as repository, but before that just add 
+
+-Des.allow_insecure_settings=true
+
+this to the jvm.options configuration on every node and restart the elasticsearch service.
+
+
+
+Then, to register S3 :
+
+
+
 curl -X PUT "localhost:9200/_snapshot/s3-backup" -H 'Content-Type: application/json' -d'
 {
-  "type": "s3",
-  "settings": {
-    "bucket": "curator",
-    "region": "ap-south-1",
-    "access_key": "",
-    "secret_key": "",
-    "base_path": "snapshot"
-  }
+"type": "s3",
+"settings": {
+"bucket": "curator-fastag",
+"region": "ap-south-1",
+"access_key": "",
+"secret_key": "",
+"base_path": "base path of your rocket where you want to keep your snapshot"
+}
 
 }'
+
+
+
+Here, 
+
+s3-backup : repository name, you can give any name
+
+curator-fastag : Bucket Name
+
+
+
+If everything goes well this will be the response:
+
+{
+  "acknowledged" : true
+}
 
 
 Now you are ready “snapshotting” your Elasticsearch indices; check out the repository configuration:
 
 curl "localhost:9200/_snapshot?pretty"
 
+{
+
+  "s3-backup" : {
+
+    "type" : "s3",
+
+    "settings" : {
+
+      "bucket" : "curator-fastag",
+
+      "region" : "ap-south-1",
+
+      "base_path" : "snapshot"
+
+    }
+
+  }
+
+}
+
+
+
+Now, your S3 as snapshot repository configured.
+
+
+
+It's time for curator to come in action : 
+
+Bring Curator config :
+
+# Remember, leave a key empty if there is no value.  None will be a string,
+
+# not a Python "NoneType"
+
+client:
+
+  hosts:
+
+    - <master network host IP>
+
+  port: 9200
+
+  url_prefix:
+
+  use_ssl: False
+
+  certificate:
+
+  client_cert:
+
+  client_key:
+
+  ssl_no_validate: False
+
+  http_auth:
+
+  timeout: 30
+
+  master_only: False
+
+
+
+logging:
+
+  loglevel: INFO
+
+  logfile:
+
+  logformat: default
+
+  blacklist: ['elasticsearch', 'urllib3']
+
+
+
+And, now curator action.yml :
+
+actions:
+
+  1:
+
+    action: snapshot
+
+    description: >-
+
+      Snapshot logstash- prefixed indices older than 1 day (based on index
+
+      creation_date) with the default snapshot name pattern of
+
+      'curator-%Y%m%d%H%M%S'.  Wait for the snapshot to complete.  Do not skip
+
+      the repository filesystem access check.  Use the other options to create
+
+      the snapshot.
+
+    options:
+
+      repository: s3-backup   # repository name
+
+      name:  # Leaving name blank will result in the default 'curator-%Y%m%d%H%M%S'
+
+      ignore_unavailable: False
+
+      include_global_state: False
+
+      partial: False
+
+      wait_for_completion: True
+
+      skip_repo_fs_check: True
+
+      timeout_override:
+
+      continue_if_exception: False
+
+      disable_action: False
+
+    filters:
+
+    - filtertype: pattern
+
+      kind: prefix
+
+      value: .monitoring #This value works as regex for indices, will search for monitoring indices and will create a snapshot for them, we can also give conditions here.
+
+
+
+Now to run Curator :
+
+sudo curator --config <path/of/curator/config> <path/of/actions.yml>
+
+
+
+The result : 
+
+
+
+
+
+
+
+
+
+
+
+ 
 
