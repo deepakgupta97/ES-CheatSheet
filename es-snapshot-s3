@@ -1,0 +1,27 @@
+Install s3 plugin on all nodes and restart the es service :
+
+/usr/share/elasticsearch/bin/elasticsearch-plugin install repository-s3
+
+
+To register s3 as snapshot registry :
+
+#!/bin/bash
+curl -X PUT "localhost:9200/_snapshot/s3-backup" -H 'Content-Type: application/json' -d'
+{
+  "type": "s3",
+  "settings": {
+    "bucket": "curator",
+    "region": "ap-south-1",
+    "access_key": "",
+    "secret_key": "",
+    "base_path": "snapshot"
+  }
+
+}'
+
+
+Now you are ready “snapshotting” your Elasticsearch indices; check out the repository configuration:
+
+curl "localhost:9200/_snapshot?pretty"
+
+
